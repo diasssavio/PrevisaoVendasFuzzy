@@ -1,7 +1,8 @@
 <?php
  
 function getIndexMes($index,$janela){
-	while($index > $janela ){
+
+	while($index > $janela -1 ){
 		$index = $index - $janela;
 	}
 	return $index + 1;

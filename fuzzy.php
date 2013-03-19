@@ -31,33 +31,39 @@ try{
 
 	$resultadoPasso3 = array();
 
-	$todasRegras = array();
+	$baseRegras = array();
 
 
 
-	//definindo limites
+	//LIMITES
 	list($limInferior,$limSuperior) = array(-34.16,42.72);
 	$labelRotulos = array('mb','b','m','a','ma');
-	$numRotulos = count($labelRotulos);
+	$nRotulos = count($labelRotulos);
 
-	for ($recorte=0; ($recorte + $janela) <= $nEntradas ; $recorte++) { 
+	for ($posEntrada=0; ($posEntrada + $janela -1) < $nEntradas ; $posEntrada++) {
 
-		$arr_Janela = array_slice($entradas, $recorte ,$janela);
-
-		$final = array();
+		$arrJanela = array_slice($entradas, $posEntrada ,$janela);
+		
+		
 		//PASSO 1 - DIVIDIR OS ESPAÇOS DE ENTRADA E SAÍDA EM CONJUNTOS FUZZY
 		//Define os intervalos de cada rótulo
-		$intervaloRotulos = defineIntervalosTRI($limInferior,$limSuperior,$numRotulos);
-		$retorno = array();	
+		$intervaloRotulos = defineIntervalosTRI($limInferior,$limSuperior,$nRotulos);
+
+		//ARMAZENA A REGRA PARA ESTA JANELA
+		$janelaRegras = array();
 
 		//PASSO 2 - GERAR REGRAS
-		for ($i=$recorte; $i < ( ($recorte + $janela)) ; $i++) {
-			$x = $arr_Janela[$i];
+		$a = 0;
+		$retorno = array();
+		for ($i=$posEntrada; $i < $posEntrada + $janela  ; $i++) {
+			$x = $arrJanela[$a];
+			$a++;
 			$temp = array();
-			for ($j=0; $j < $numRotulos; $j++) {
+			//GERA O VALOR PARA CADA RÓTULO DE PERTINÊNCIA
+			for ($j=0; $j < $nRotulos; $j++) {
 				$f = $intervaloRotulos[$j];
 				$e = ($j - 1) < 0 ? $limInferior-1: $intervaloRotulos[$j - 1];
-				$g = ($j + 1) > $numRotulos ? $limSuperior+1: $intervaloRotulos[$j + 1];
+				$g = ($j + 1) > $nRotulos ? $limSuperior+1: $intervaloRotulos[$j + 1];
 				$temp[$labelRotulos[$j]] = TRI($x,$e,$f,$g);
 			}
 			$nI = getIndexMes($i,$janela);
@@ -78,7 +84,7 @@ try{
 			$grauRegra = $grauRegra * $maiorGrauPertinenciaValor;
 		}
 		$retorno['grau']= $grauRegra;
-		$resultadoPasso3[$recorte] = $retorno;
+		$resultadoPasso3[$posEntrada] = $retorno;
 		//Escolhe o maior valor de cada mes
 		$maiorValorMes = array();
 		foreach($retorno as $key => $mes){
@@ -86,11 +92,10 @@ try{
 				$maiorValorMes[] = max($mes);//retorna a primeira posicao
 			}
 		}
-		$todasRegras[] = $maiorValorMes;
-		if($recorte == 2){
-			break;
-		}
+		$baseRegras[] = $maiorValorMes;
 	}
+	var_dump($resultadoPasso3[0]);
+	echo '<br>';
 	var_dump($resultadoPasso3[1]);
 }catch(Exception $e){
 	var_dump($e->getMessage());
