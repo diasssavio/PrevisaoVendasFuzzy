@@ -37,7 +37,7 @@ try{
 
 	//LIMITES
 	list($limInferior,$limSuperior) = array(-34.16,42.72);
-	$labelRotulos = array('mb','b','m','a','ma');
+	$labelRotulos = array('a0','a1','a2','a3','a4');
 	$nRotulos = count($labelRotulos);
 
 	for ($posEntrada=0; ($posEntrada + $janela -1) < $nEntradas ; $posEntrada++) {
@@ -74,29 +74,134 @@ try{
 		$grauRegra = 1.0;//Número neutro para multiplicação
 		foreach ($retorno as $mesExtenso => $mes) {
 			$maiorGrauPertinenciaValor = 0.0;
-			$maiorGrauPertinenciaRotulo = '';
 			foreach ($mes as $rotulo => $valorRotulo) {
 				if($valorRotulo > $maiorGrauPertinenciaValor) {
 					$maiorGrauPertinenciaValor = $valorRotulo;
-					$maiorGrauPertinenciaRotulo = $rotulo;
 				}
 			}
 			$grauRegra = $grauRegra * $maiorGrauPertinenciaValor;
 		}
 		$retorno['grau']= $grauRegra;
 		$resultadoPasso3[$posEntrada] = $retorno;
-		//Escolhe o maior valor de cada mes
+
+		#var_dump($retorno);
+		#echo '<br>';
+		#echo '<br>';
+		#//Escolhe o maior valor de cada mes
 		$maiorValorMes = array();
+		$Consequente = array();
 		foreach($retorno as $key => $mes){
 			if($key != 'grau'){
-				$maiorValorMes[] = max($mes);//retorna a primeira posicao
+				$valorMax = max($mes);
+				$chaveMax = '';
+				foreach ($mes as $key2 => $value) {
+					if($valorMax == $value){
+						$chaveMax = $key2;
+						break;
+					}
+				}
+				if($key == 'Consequente13'){
+					$Consequente13 = array('chave'=>$chaveMax,'valor'=>$valorMax);
+				}else {
+					$maiorValorMes[] = array('chave'=>$chaveMax,'valor'=>$valorMax);
+				}
 			}
 		}
+		$maiorValorMes[] = $Consequente13;
 		$baseRegras[] = $maiorValorMes;
 	}
-	var_dump($resultadoPasso3[0]);
-	echo '<br>';
-	var_dump($resultadoPasso3[1]);
+
+	#Ordenar base de regras
+	#Deixar somente os rotulos
+	$baseRegrasRotulos = array();
+	foreach ($baseRegras as $key => $mes) {
+		$auxBaseRegras = array();
+		$i =0 ;
+		foreach ($mes as $key2 => $value2) {
+			$auxBaseRegras[$key2] = $value2;
+		}
+		$baseRegrasRotulos[] = $auxBaseRegras;
+	}
+	
+	$nBaseRegras = count($baseRegrasRotulos);
+
+	#bubble sort para Ordenar
+	for($i=0;$i<$nBaseRegras;$i++){
+		for($j=0;$j<$nBaseRegras - 1;$j++){
+			foreach ($baseRegrasRotulos[$j] as $key => $value) {
+				if($key != 12 ){
+					if($baseRegrasRotulos[$j+1][$key]['chave'] < $baseRegrasRotulos[$j][$key]['chave']) {
+						$aux = null;
+						$aux = $baseRegrasRotulos[$j+1][$key];
+						$baseRegrasRotulos[$j+1][$key]= null;
+						$baseRegrasRotulos[$j+1][$key] = $baseRegrasRotulos[$j][$key];
+						$baseRegrasRotulos[$j][$key] = null;
+						$baseRegrasRotulos[$j][$key] = $aux;
+						break;
+					}
+					else if($baseRegrasRotulos[$j+1][$key]['chave'] > $baseRegrasRotulos[$j][$key]['chave']) {
+						break;
+					}
+				}
+			}
+		}
+	}
+
+	#eliminando regras repetidas e preservando a grau de pertinencia
+	echo 'Total 1 :' . count($baseRegras).'<br>';
+	foreach($baseRegrasRotulos as $value){
+		foreach ($value as $key => $value2) {
+			#var_dump($value2['chave']);
+			#var_dump($value2['valor']);
+		}
+		#echo "<br>";	
+	}
+	for($i=0;$i<$nBaseRegras-1;$i++){
+		$atual = $baseRegras[$i];
+		$proximo = $baseRegras[$i+1];
+		$nBaseRegrasAtual = count($atual);
+		$igual = true;
+		for($j=0;$j<$nBaseRegrasAtual;$j++){
+			if($atual[$j]['chave'] != $proximo[$j]['chave']){
+				$igual = false;
+				break;
+			}
+		}
+		if($igual){
+			$grauAtual = 1.0;
+			foreach($atual as $value){
+				$grauAtual *= $value['valor'];
+			}
+			$grauProximo = 1.0;
+			foreach($grauProximo as $value){
+				$grauProximo *= $value['valor'];
+			}
+
+			if($grauAtual > $grauProximo){
+				$aux = null;
+				$aux = $baseRegras[$i];
+				$baseRegras[$i] = null;
+
+				$baseRegras[$i] = $baseRegras[$i+1];
+				$baseRegras[$i+1] = null;
+				$baseRegras[$i+1] = $aux;
+				unset($baseRegras[$i]);
+			}
+			else{
+				unset($baseRegras[$i]);	
+			}
+		}
+	}
+	echo 'Total 2 :' . count($baseRegras).'<br>';
+	foreach($baseRegrasRotulos as $value){
+		foreach ($value as $key => $value2) {
+		#	var_dump($value2['chave']);
+		}
+	#	echo "<br>";	
+	}
+	#var_dump($resultadoPasso3[0]);
+	#var_dump($baseRegras[0]);
+	
 }catch(Exception $e){
 	var_dump($e->getMessage());
 }
