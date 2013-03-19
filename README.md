@@ -1,4 +1,4 @@
 previsaovendasfuzzy
 ===================
 
-Previsao de Vendas utilizando Lógica Fuzzy +PHP
+Previsao de Vendas utilizando Lógica Fuzzy
