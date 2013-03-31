@@ -53,8 +53,12 @@ and open the template in the editor.
 //            var_dump($e);
 //        }
         ?>
+        Margem:
+        <input type='text' id='margem' size="1" maxlength="2" />%
         <br/>
-        <select>
+        <br/>
+        <br/>
+        <select id="comboMes">
             <option value="0">Jan - 2011</option>
             <option value="1">Fev - 2011</option>
             <option value="2">Mar - 2011</option>
@@ -81,15 +85,20 @@ and open the template in the editor.
             <option value="23">Dez - 2012</option>
         </select>
         <input type='button' value='Enviar dados' disable="true" onclick="
+            var mesSelecionado = $('#comboMes option:selected').val();
+            var margem = $('input[id=margem]').val();
             $.ajax({
                 type:'POST',
                 url: 'PrevisaoVendasFuzzy.php',
-                data:{operacao:'buscarResultado'},
+                data:{operacao:'buscarResultado',posMes:mesSelecionado,margem:margem},
                 success:function(resultado){
                     var dados = JSON.parse(resultado);
                     if(dados.success){
                         alert('Carregado com sucesso.');
-                        $('input[id=saida]').val(dados.resultado[0].valor + ' - ' + dados.resultado[0].chave);
+                        $('input[id=saidaEsperada]').val(dados.saidaReal);
+                        $('input[id=saidaReal]').val(dados.saidaEsperada);
+                        $('input[id=erro]').val(dados.saidaEsperada - dados.saidaReal);
+
                     }else
                     {
                         alert('Ocorreu um erro.');
@@ -98,8 +107,14 @@ and open the template in the editor.
             });
 
                " />
-<br/><br/><br/>
-        Saída:
-        <input type='text' readonly="true" id='saida' />
+        <br/><br/><br/>
+        Saída Esperada:
+        <input type='text' readonly="true" id='saidaEsperada' />
+        <br/>
+        Saída Real:
+        <input type='text' readonly="true" id='saidaReal' />
+        <br/>
+        Erro:
+        <input type='text' readonly="true" id='erro' />
     </body>
 </html>
