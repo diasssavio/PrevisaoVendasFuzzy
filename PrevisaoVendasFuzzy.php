@@ -10,6 +10,62 @@
  *
  * @author igs
  */
+if ($_SERVER['REQUEST_METHOD'] == "POST") {
+    session_start();
+    switch ($_POST['operacao']) {
+        case 'buscarResultado':
+            if (!isset($_SESSION['fuzzy'])) {
+                $rotulos = array('a0', 'a1', 'a2', 'a3', 'a4');
+                list($limInferior, $limSuperior, $tamanhoJanela) = array(-34.16, 42.72, 13);
+                $fuzzy = new PrevisaoVendasFuzzy($tamanhoJanela, $limInferior, $limSuperior, $rotulos);
+                $_SESSION['fuzzy'] = $fuzzy;
+                $entradasTreino = array(
+                    /* 2004 */-27.75, 1.47, 4.29, 6.51, -4.22, -2.79, 7.76, -1.24, -1.45, 7.99, -3.24, 36.31,
+                    /* 2005 */-25.97, -4.22, 16.09, -8.23, -0.35, -3.85, 6.63, -3.3, -2.1, 7.13, -3.01, 35.6,
+                    /* 2006 */-25.38, -3.99, 6.14, 5.23, -8.54, -2.07, 4.78, -1.12, 1.12, 2.32, 1.18, 31.79,
+                    /* 2007 */-23.29, -2.41, 10.79, -0.77, -4.51, -0.9, 1.56, 2.37, 0.47, 1.63, 1.88, 33.56,
+                    /* 2008 */-22.84, -2.35, 16.76, -12.13, 8.66, -5.65, 4.4, 3.57, -5.45, 7.22, 1.19, 27.86,
+                    /* 2009 */-22.59, -4.12, 6.68, 7.2, -3.67, -5.25, 5.92, 0.95, -3.77, 8.33, -2.24, 31.68,
+                    /* 2010 */-20.96, -5.54, 10.74, -3.28, 0.46, -4.59, 4.21, -1.37, -0.11, 7.82, -4.43, 34.71
+                );
+                $fuzzy->gerarBaseRegras($entradasTreino);
+            }
+            $fuzzy = $_SESSION['fuzzy'];
+            $entrada = array(-20.96, -5.54, 10.74, -3.28, 0.46, -4.59, 4.21, -1.37, -0.11, 7.82, -4.43, 34.71);
+
+            $todasRegrasPossiveis = $fuzzy->gerarProdutoCartesiano($fuzzy->eliminarValoresZerados($fuzzy->fuzzificar($entrada), TRUE));
+            $regrasAtivadas = $fuzzy->ativarRegras($todasRegrasPossiveis);
+            $minimo = $fuzzy->aplicarOperadorFuzzy($regrasAtivadas);
+            echo json_encode(array('success' => TRUE, 'resultado' => $minimo));
+            break;
+//            if ($fuzzy->gerarBaseRegras($entradasTreino)) {
+//                $entrada = array(-20.96, -5.54, 10.74, -3.28, 0.46, -4.59, 4.21, -1.37, -0.11, 7.82, -4.43, 34.71);
+//                $todasRegrasPossiveis = $fuzzy->gerarProdutoCartesiano($fuzzy->eliminarValoresZerados($fuzzy->fuzzificar($entrada)));
+//                $regrasAtivadas = $fuzzy->ativarRegras($todasRegrasPossiveis);
+//                echo "regras ativadas";
+//                echo "<br><br>";
+//                var_dump(count($regrasAtivadas));
+//                echo "<br><br>";
+//                var_dump($regrasAtivadas);
+//                echo json_encode(array('success' => TRUE));
+//                if (!isset($_SESSION['fuzzy'])) {
+//                    $_SESSION['fuzzy'] = $fuzzy;
+//                }
+//            } else {
+//                echo json_encode(array('success' => FALSE));
+//            }
+////
+//            echo json_encode(array('success' => TRUE));
+            break;
+        default:
+            $entradasTeste = array(
+                /* 2011 */-20.49, -6.35, 10.14, 8, -10.92, -2.49, 6.41, -1.84, -0.22, 5.16, -1.84, 30.66,
+                /* 2012 */-18.91, 0.27, 7.54, -1.37, -2.37, -5.39, -0.08, 2.12, 0.79, 2.80, 2.13, 29.73
+            );
+            break;
+    }
+}
+
 class PrevisaoVendasFuzzy {
 
     public function __construct($tamanhoJanela, $limInferior, $limSuperior, $rotulos)
@@ -19,7 +75,22 @@ class PrevisaoVendasFuzzy {
         $this->limSuperior = $limSuperior;
         $this->rotulos = $rotulos;
         $this->nRotulos = count($rotulos);
+        $this->intervalosDefinidos = 0;
+        $this->baseRegras = array();
+        $this->regrasPasso3 = array();
         $this->defineIntervalosTRI();
+    }
+
+    public function getSinonimoRotulo($rotulo)
+    {
+        $sinonimos = array(
+            'a0' => 'Muito Baixo',
+            'a1' => 'Baixo',
+            'a2' => 'Médio',
+            'a3' => 'Alto',
+            'a4' => 'Muito Alto'
+        );
+        return $sinonimos[$rotulo];
     }
 
     public function fuzzificar($entradas, $posEntrada = 0)
@@ -49,15 +120,36 @@ class PrevisaoVendasFuzzy {
         return $novaRegra;
     }
 
+    public function aplicarOperadorFuzzy($regrasAtivadas)
+    {
+        $valores = array();
+        foreach ($regrasAtivadas as $regra) {
+            $minimo = array();
+            $minimo['valor'] = 1;
+            $minimo['chave'] = 1;
+            foreach ($regra as $value) {
+                foreach ($value as $key2 => $value2) {
+                    if ($value2 < $minimo['valor']) {
+                        $minimo['chave'] = $this->getSinonimoRotulo($key2);
+                        $minimo['valor'] = $value2;
+                    }
+                }
+            }
+            $valores[] = $minimo;
+        }
+        return $valores;
+    }
+
     public function ativarRegras($regras)
     {
         $regrasAtivadas = array();
         foreach ($regras as $regra) {
             $regraRotulos = '';
             foreach ($regra as $value) {
-                $regraRotulos .= $value;
+                foreach ($value as $key2 => $value2) {
+                    $regraRotulos .= $key2;
+                }
             }
-
             foreach ($this->baseRegras as $baseRegra) {
                 $baseRegraRotulos = '';
                 foreach ($baseRegra as $key => $value) {
@@ -65,27 +157,36 @@ class PrevisaoVendasFuzzy {
                         $baseRegraRotulos .= $value['chave'];
                     }
                 }
-                if($regraRotulos == $baseRegraRotulos){
-                    $regrasAtivadas[] = $baseRegra;
+                if ($regraRotulos == $baseRegraRotulos) {
+                    $regrasAtivadas[] = $regra;
                 }
             }
         }
         return $regrasAtivadas;
     }
 
-    public function eliminarValoresZerados($entrada)
+    public function eliminarValoresZerados($entrada, $preservarChaves = FALSE)
     {
         $saida = array();
         $contador = 0;
-        foreach ($entrada as $key => $value) {
-
-            foreach ($value as $key2 => $value2) {
-                if (!empty($value2)) {
-//                    $saida[$key][$key2] = $value2;
-                    $saida[$contador][] = $key2;
+        if (!$preservarChaves) {
+            foreach ($entrada as $value) {
+                foreach ($value as $key2 => $value2) {
+                    if (!empty($value2)) {
+                        $saida[$contador][] = $key2;
+                    }
                 }
+                $contador++;
             }
-            $contador++;
+        } else {
+            foreach ($entrada as $value) {
+                foreach ($value as $key2 => $value2) {
+                    if (!empty($value2)) {
+                        $saida[$contador][$key2] = $value2;
+                    }
+                }
+                $contador++;
+            }
         }
         return $saida;
     }
@@ -94,7 +195,7 @@ class PrevisaoVendasFuzzy {
     {
         error_reporting(E_ALL);
         if (empty($entradasTreino)) {
-            return FALSE;
+            return;
         }
         $nEntradas = count($entradasTreino);
         for ($posEntrada = 0; ($posEntrada + $this->tamanhoJanela - 1) < $nEntradas; $posEntrada++) {
@@ -108,7 +209,7 @@ class PrevisaoVendasFuzzy {
         $regrasOrdenadas = $this->ordenarRegras($this->baseRegras);
         unset($this->baseRegras);
         $this->baseRegras = $this->eliminarRedundancia($regrasOrdenadas);
-        return TRUE;
+        return;
     }
 
     public function gerarProdutoCartesiano($entradaFuzzificada)
@@ -127,18 +228,102 @@ class PrevisaoVendasFuzzy {
                                                 for ($k = 0; $k < 2; $k++) {
                                                     for ($l = 0; $l < 2; $l++) {
                                                         $temp = array();
-                                                        $temp[0] = $entradaFuzzificada[0][$a];
-                                                        $temp[1] = $entradaFuzzificada[1][$b];
-                                                        $temp[2] = $entradaFuzzificada[2][$c];
-                                                        $temp[3] = $entradaFuzzificada[3][$d];
-                                                        $temp[4] = $entradaFuzzificada[4][$e];
-                                                        $temp[5] = $entradaFuzzificada[5][$f];
-                                                        $temp[6] = $entradaFuzzificada[6][$g];
-                                                        $temp[7] = $entradaFuzzificada[7][$h];
-                                                        $temp[8] = $entradaFuzzificada[8][$i];
-                                                        $temp[9] = $entradaFuzzificada[9][$j];
-                                                        $temp[10] = $entradaFuzzificada[10][$k];
-                                                        $temp[11] = $entradaFuzzificada[11][$l];
+                                                        $countTemp = $a;
+                                                        foreach ($entradaFuzzificada[0] as $key => $value) {
+                                                            if ($countTemp == 0) {
+                                                                $temp[0][$key] = $entradaFuzzificada[0][$key];
+                                                                break;
+                                                            }
+                                                            $countTemp = 0;
+                                                        }
+                                                        $countTemp = $b;
+                                                        foreach ($entradaFuzzificada[1] as $key => $value) {
+                                                            if ($countTemp == 0) {
+                                                                $temp[1][$key] = $entradaFuzzificada[1][$key];
+                                                                break;
+                                                            }
+                                                            $countTemp = 0;
+                                                        }
+                                                        $countTemp = $c;
+                                                        foreach ($entradaFuzzificada[2] as $key => $value) {
+                                                            if ($countTemp == 0) {
+                                                                $temp[2][$key] = $entradaFuzzificada[2][$key];
+                                                                break;
+                                                            }
+                                                            $countTemp = 0;
+                                                        }
+                                                        $countTemp = $d;
+                                                        foreach ($entradaFuzzificada[3] as $key => $value) {
+                                                            if ($countTemp == 0) {
+                                                                $temp[3][$key] = $entradaFuzzificada[3][$key];
+                                                                break;
+                                                            }
+                                                            $countTemp = 0;
+                                                        }
+                                                        $countTemp = $e;
+                                                        foreach ($entradaFuzzificada[4] as $key => $value) {
+                                                            if ($countTemp == 0) {
+                                                                $temp[4][$key] = $entradaFuzzificada[4][$key];
+                                                                break;
+                                                            }
+                                                            $countTemp = 0;
+                                                        }
+                                                        $countTemp = $f;
+                                                        foreach ($entradaFuzzificada[5] as $key => $value) {
+                                                            if ($countTemp == 0) {
+                                                                $temp[5][$key] = $entradaFuzzificada[5][$key];
+                                                                break;
+                                                            }
+                                                            $countTemp = 0;
+                                                        }
+                                                        $countTemp = $g;
+                                                        foreach ($entradaFuzzificada[6] as $key => $value) {
+                                                            if ($countTemp == 0) {
+                                                                $temp[6][$key] = $entradaFuzzificada[6][$key];
+                                                                break;
+                                                            }
+                                                            $countTemp = 0;
+                                                        }
+                                                        $countTemp = $h;
+                                                        foreach ($entradaFuzzificada[7] as $key => $value) {
+                                                            if ($countTemp == 0) {
+                                                                $temp[7][$key] = $entradaFuzzificada[7][$key];
+                                                                break;
+                                                            }
+                                                            $countTemp = 0;
+                                                        }
+                                                        $countTemp = $i;
+                                                        foreach ($entradaFuzzificada[8] as $key => $value) {
+                                                            if ($countTemp == 0) {
+                                                                $temp[8][$key] = $entradaFuzzificada[8][$key];
+                                                                break;
+                                                            }
+                                                            $countTemp = 0;
+                                                        }
+                                                        $countTemp = $j;
+                                                        foreach ($entradaFuzzificada[9] as $key => $value) {
+                                                            if ($countTemp == 0) {
+                                                                $temp[9][$key] = $entradaFuzzificada[9][$key];
+                                                                break;
+                                                            }
+                                                            $countTemp = 0;
+                                                        }
+                                                        $countTemp = $k;
+                                                        foreach ($entradaFuzzificada[10] as $key => $value) {
+                                                            if ($countTemp == 0) {
+                                                                $temp[10][$key] = $entradaFuzzificada[10][$key];
+                                                                break;
+                                                            }
+                                                            $countTemp = 0;
+                                                        }
+                                                        $countTemp = $l;
+                                                        foreach ($entradaFuzzificada[11] as $key => $value) {
+                                                            if ($countTemp == 0) {
+                                                                $temp[11][$key] = $entradaFuzzificada[11][$key];
+                                                                break;
+                                                            }
+                                                            $countTemp = 0;
+                                                        }
                                                         $saida[] = $temp;
                                                     }
                                                 }
