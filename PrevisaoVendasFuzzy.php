@@ -10,45 +10,56 @@
  *
  * @author igs
  */
+error_reporting(E_ALL ^ E_NOTICE);
+
 if ($_SERVER['REQUEST_METHOD'] == "POST") {
+    $posMes = $_POST['posMes'];
+    $margem = $_POST['margem'];
+    $nConjuntos = isset($_POST['nConjuntos']) ? $_POST['nConjuntos'] : 5;
+    $todasEntradas = getArrayEntradas();
+    $entradasTreino = array_slice($todasEntradas, 0, 84 + $posMes);
+
+    //DESCOBRIR ESTES VALORES
+    $minimo = -34.16;//ALGUM CÁLCULO
+    $maximo = 42.72;//ALGUM CALCULO
+
+    for ($i = 0; $i < $nConjuntos; $i++) {
+        $rotulos[] = (string)'a' . $i;
+    }
+    list($limInferior, $limSuperior, $tamanhoJanela) = array($minimo, $maximo, 13);
+    $fuzzy = new PrevisaoVendasFuzzy($tamanhoJanela, $limInferior, $limSuperior, $rotulos);
+    $fuzzy->gerarBaseRegras($entradasTreino);
+
     switch ($_POST['operacao']) {
+        case 'buscarRegras':
+            $regras = $fuzzy->getBaseRegrasFormatada();
+            foreach ($regras as $regra) {
+                echo $regra;
+                ?>                              <?php
+
+            }
+            break;
         case 'buscarResultado':
-            $posMes = $_POST['posMes'];
-            $margem = $_POST['margem'];
-            $todasEntradas = array(
-                /* 2004 */-27.75, 1.47, 4.29, 6.51, -4.22, -2.79, 7.76, -1.24, -1.45, 7.99, -3.24, 36.31,
-                /* 2005 */-25.97, -4.22, 16.09, -8.23, -0.35, -3.85, 6.63, -3.3, -2.1, 7.13, -3.01, 35.6,
-                /* 2006 */-25.38, -3.99, 6.14, 5.23, -8.54, -2.07, 4.78, -1.12, 1.12, 2.32, 1.18, 31.79,
-                /* 2007 */-23.29, -2.41, 10.79, -0.77, -4.51, -0.9, 1.56, 2.37, 0.47, 1.63, 1.88, 33.56,
-                /* 2008 */-22.84, -2.35, 16.76, -12.13, 8.66, -5.65, 4.4, 3.57, -5.45, 7.22, 1.19, 27.86,
-                /* 2009 */-22.59, -4.12, 6.68, 7.2, -3.67, -5.25, 5.92, 0.95, -3.77, 8.33, -2.24, 31.68,
-                /* 2010 */-20.96, -5.54, 10.74, -3.28, 0.46, -4.59, 4.21, -1.37, -0.11, 7.82, -4.43, 34.71,
-                //posicao = 84
-                /* 2011 */-20.49, -6.35, 10.14, 8, -10.92, -2.49, 6.41, -1.84, -0.22, 5.16, -1.84, 30.66,
-                /* 2012 */-18.91, 0.27, 7.54, -1.37, -2.37, -5.39, -0.08, 2.12, 0.79, 2.80, 2.13, 29.73);
-            $entradasTreino = array_slice($todasEntradas, 0, 83 + $posMes);
-            $saidaEsperada = $todasEntradas[84 + $posMes];
-
-            $minimo = min($entradasTreino) + (min($entradasTreino) / $margem);// - %
-            $maximo = max($entradasTreino) + (max($entradasTreino) / $margem);// + %
-
-            $rotulos = array('a0', 'a1', 'a2', 'a3', 'a4');
-            list($limInferior, $limSuperior, $tamanhoJanela) = array($minimo, $maximo, 13);
-            $fuzzy = new PrevisaoVendasFuzzy($tamanhoJanela, $limInferior, $limSuperior, $rotulos);
-
-            $fuzzy->gerarBaseRegras($entradasTreino);
-
             $entrada = array_slice($todasEntradas, 84 + $posMes - 12, 12);
-
+            $saidaEsperada = $todasEntradas[84 + $posMes];
             $todasRegrasPossiveis = $fuzzy->gerarProdutoCartesiano($fuzzy->eliminarValoresZerados($fuzzy->fuzzificar($entrada), TRUE));
             $regrasAtivadas = $fuzzy->ativarRegras($todasRegrasPossiveis);
-            $minimo = $fuzzy->aplicarOperadorFuzzy($regrasAtivadas);
-            echo json_encode(array('success' => TRUE, 'saidaReal' => $minimo[0]['valor'], 'saidaEsperada' => $saidaEsperada));
+            $saidaReal = $fuzzy->aplicarOperadorFuzzy($regrasAtivadas);
+            echo json_encode(array('success' => TRUE, 'saidaReal' => $saidaReal, 'saidaEsperada' => $saidaEsperada));
             break;
     }
 }
 
 class PrevisaoVendasFuzzy {
+
+    public $tamanhoJanela;
+    public $limInferior;
+    public $limSuperior;
+    public $rotulos;
+    public $nRotulos;
+    public $intervalosDefinidos;
+    public $baseRegras;
+    public $regrasPasso3;
 
     public function __construct($tamanhoJanela, $limInferior, $limSuperior, $rotulos)
     {
@@ -61,6 +72,23 @@ class PrevisaoVendasFuzzy {
         $this->baseRegras = array();
         $this->regrasPasso3 = array();
         $this->defineIntervalosTRI();
+    }
+
+    public function getBaseRegrasFormatada()
+    {
+        $saida = array();
+        $countRegras = 1;
+        foreach ($this->baseRegras as $regra) {
+            $rotuloExtenso = array();
+            for ($i = 0; $i < 12; $i++) {
+                foreach ($regra[$i] as $rotulo => $grau) {
+                    $rotuloExtenso[] = $rotulo;
+                }
+            }
+            $saida[] = (strlen($countRegras) == 1 ? ('0' . $countRegras) : ($countRegras)) . ') SE ' . implode(' E ', $rotuloExtenso) . ' ENTAO ' . $regra[13] . ' = ' . $regra['grau'];
+            $countRegras++;
+        }
+        return $saida;
     }
 
     public function getSinonimoRotulo($rotulo)
@@ -93,7 +121,7 @@ class PrevisaoVendasFuzzy {
                 $temp[$this->rotulos[$j]] = $this->TRI($x, $e, $f, $g);
             }
             $nI = $this->getIndexMes($i, $tamJanela);
-            $novaRegra[$this->getMesExtenso($nI) . $nI] = $temp;
+            $novaRegra[$this->getMesExtenso($nI)] = $temp;
         }
 
         //É ADICIONADA O GRAU DE PERTINENCIA DA REGRA
@@ -124,24 +152,19 @@ class PrevisaoVendasFuzzy {
         return $valores;
     }
 
-    public function ativarRegras($regras)
+    public function ativarRegras($RegrasProdutoCartesiano)
     {
+        $nRegrasProdutoCartesiano = count($RegrasProdutoCartesiano);
         $regrasAtivadas = array();
-        foreach ($regras as $regra) {
-            $regraRotulos = '';
-            foreach ($regra as $value) {
-                foreach ($value as $key2 => $value2) {
-                    $regraRotulos .= $key2;
+        foreach ($this->baseRegras as $regra) {
+            $regraRotulo = '';
+            for ($i = 0; $i < 12; $i++) {
+                foreach ($regra[$i] as $rotulo => $value) {
+                    $regraRotulo .=$rotulo;
                 }
             }
-            foreach ($this->baseRegras as $baseRegra) {
-                $baseRegraRotulos = '';
-                foreach ($baseRegra as $key => $value) {
-                    if ($key != 12) {//Não precisa do consequente
-                        $baseRegraRotulos .= $value['chave'];
-                    }
-                }
-                if ($regraRotulos == $baseRegraRotulos) {
+            for ($i = 0; $i < $nRegrasProdutoCartesiano; $i++) {
+                if ($RegrasProdutoCartesiano[$i] == $regraRotulo) {
                     $regrasAtivadas[] = $regra;
                 }
             }
@@ -175,25 +198,19 @@ class PrevisaoVendasFuzzy {
         return $saida;
     }
 
-    public function gerarBaseRegras($entradasTreino = array())
+    public function gerarBaseRegras($entradasTreino)
     {
-        error_reporting(E_ALL);
-        if (empty($entradasTreino)) {
-            return;
-        }
         $nEntradas = count($entradasTreino);
+        $baseRegrasTotal = array();
         for ($posEntrada = 0; ($posEntrada + $this->tamanhoJanela - 1) < $nEntradas; $posEntrada++) {
             $janelaMeses = array_slice($entradasTreino, $posEntrada, $this->tamanhoJanela);
             $novaRegra = $this->fuzzificar($janelaMeses, $posEntrada);
-            $this->regrasPasso3[] = $novaRegra;
-            $this->baseRegras[] = $this->getChaveValorRegra($novaRegra);
+            $baseRegrasTotal[] = $this->getChaveValorRegra($novaRegra);
             //ATÉ O MOMENTO, JÁ FOI OBTIDO OS VALORES DE CADA INTERVALO DE CADA MES(12 MESES + CONSEQUENTE)
             //INCLUSIVE O GRAU DE PERTINENCIA DA REGRA(APENAS COM OS MAIORES VALORES DE CADA CONJUNTO)
         }
-        $regrasOrdenadas = $this->ordenarRegras($this->baseRegras);
-        unset($this->baseRegras);
-        $this->baseRegras = $this->eliminarRedundancia($regrasOrdenadas);
-        return;
+        $baseRegrasTotalOrdenadas = $this->ordenarRegras($baseRegrasTotal);
+        $this->baseRegras = $this->eliminarRedundancia($baseRegrasTotalOrdenadas);
     }
 
     public function gerarProdutoCartesiano($entradaFuzzificada)
@@ -215,7 +232,7 @@ class PrevisaoVendasFuzzy {
                                                         $countTemp = $a;
                                                         foreach ($entradaFuzzificada[0] as $key => $value) {
                                                             if ($countTemp == 0) {
-                                                                $temp[0][$key] = $entradaFuzzificada[0][$key];
+                                                                $temp[0] = $key;
                                                                 break;
                                                             }
                                                             $countTemp = 0;
@@ -223,7 +240,7 @@ class PrevisaoVendasFuzzy {
                                                         $countTemp = $b;
                                                         foreach ($entradaFuzzificada[1] as $key => $value) {
                                                             if ($countTemp == 0) {
-                                                                $temp[1][$key] = $entradaFuzzificada[1][$key];
+                                                                $temp[1] = $key;
                                                                 break;
                                                             }
                                                             $countTemp = 0;
@@ -231,7 +248,7 @@ class PrevisaoVendasFuzzy {
                                                         $countTemp = $c;
                                                         foreach ($entradaFuzzificada[2] as $key => $value) {
                                                             if ($countTemp == 0) {
-                                                                $temp[2][$key] = $entradaFuzzificada[2][$key];
+                                                                $temp[2] = $key;
                                                                 break;
                                                             }
                                                             $countTemp = 0;
@@ -239,7 +256,7 @@ class PrevisaoVendasFuzzy {
                                                         $countTemp = $d;
                                                         foreach ($entradaFuzzificada[3] as $key => $value) {
                                                             if ($countTemp == 0) {
-                                                                $temp[3][$key] = $entradaFuzzificada[3][$key];
+                                                                $temp[3] = $key;
                                                                 break;
                                                             }
                                                             $countTemp = 0;
@@ -247,7 +264,7 @@ class PrevisaoVendasFuzzy {
                                                         $countTemp = $e;
                                                         foreach ($entradaFuzzificada[4] as $key => $value) {
                                                             if ($countTemp == 0) {
-                                                                $temp[4][$key] = $entradaFuzzificada[4][$key];
+                                                                $temp[4] = $key;
                                                                 break;
                                                             }
                                                             $countTemp = 0;
@@ -255,7 +272,7 @@ class PrevisaoVendasFuzzy {
                                                         $countTemp = $f;
                                                         foreach ($entradaFuzzificada[5] as $key => $value) {
                                                             if ($countTemp == 0) {
-                                                                $temp[5][$key] = $entradaFuzzificada[5][$key];
+                                                                $temp[5] = $key;
                                                                 break;
                                                             }
                                                             $countTemp = 0;
@@ -263,7 +280,7 @@ class PrevisaoVendasFuzzy {
                                                         $countTemp = $g;
                                                         foreach ($entradaFuzzificada[6] as $key => $value) {
                                                             if ($countTemp == 0) {
-                                                                $temp[6][$key] = $entradaFuzzificada[6][$key];
+                                                                $temp[6] = $key;
                                                                 break;
                                                             }
                                                             $countTemp = 0;
@@ -271,7 +288,7 @@ class PrevisaoVendasFuzzy {
                                                         $countTemp = $h;
                                                         foreach ($entradaFuzzificada[7] as $key => $value) {
                                                             if ($countTemp == 0) {
-                                                                $temp[7][$key] = $entradaFuzzificada[7][$key];
+                                                                $temp[7] = $key;
                                                                 break;
                                                             }
                                                             $countTemp = 0;
@@ -279,7 +296,7 @@ class PrevisaoVendasFuzzy {
                                                         $countTemp = $i;
                                                         foreach ($entradaFuzzificada[8] as $key => $value) {
                                                             if ($countTemp == 0) {
-                                                                $temp[8][$key] = $entradaFuzzificada[8][$key];
+                                                                $temp[8] = $key;
                                                                 break;
                                                             }
                                                             $countTemp = 0;
@@ -287,7 +304,7 @@ class PrevisaoVendasFuzzy {
                                                         $countTemp = $j;
                                                         foreach ($entradaFuzzificada[9] as $key => $value) {
                                                             if ($countTemp == 0) {
-                                                                $temp[9][$key] = $entradaFuzzificada[9][$key];
+                                                                $temp[9] = $key;
                                                                 break;
                                                             }
                                                             $countTemp = 0;
@@ -295,7 +312,7 @@ class PrevisaoVendasFuzzy {
                                                         $countTemp = $k;
                                                         foreach ($entradaFuzzificada[10] as $key => $value) {
                                                             if ($countTemp == 0) {
-                                                                $temp[10][$key] = $entradaFuzzificada[10][$key];
+                                                                $temp[10] = $key;
                                                                 break;
                                                             }
                                                             $countTemp = 0;
@@ -303,12 +320,12 @@ class PrevisaoVendasFuzzy {
                                                         $countTemp = $l;
                                                         foreach ($entradaFuzzificada[11] as $key => $value) {
                                                             if ($countTemp == 0) {
-                                                                $temp[11][$key] = $entradaFuzzificada[11][$key];
+                                                                $temp[11] = $key;
                                                                 break;
                                                             }
                                                             $countTemp = 0;
                                                         }
-                                                        $saida[] = $temp;
+                                                        $saida[] = implode('', $temp);
                                                     }
                                                 }
                                             }
@@ -324,92 +341,87 @@ class PrevisaoVendasFuzzy {
         return $saida;
     }
 
-    public function eliminarRedundancia($baseRegras)
+    public function eliminarRedundancia($baseRegrasTotal)
     {
-        $nBaseRegras = count($baseRegras);
-        for ($i = 0; $i < $nBaseRegras; $i++) {
-            $atual = '';
-            $proximo = '';
+        $nRegras = count($baseRegrasTotal);
+        for ($i = 0; $i < $nRegras; $i++) {
+
+            $rotuloRegraI = '';
+            $regraI = $baseRegrasTotal[$i];
             for ($k = 0; $k < 12; $k++) {
-                $proximo .= $baseRegras[$i + 1][$k]['chave'][1];
-                $atual .= $baseRegras[$i][$k]['chave'][1];
+                foreach ($regraI[$k] as $rotulo => $chave) {
+                    $rotuloRegraI .=$rotulo;
+                }
             }
-            if ($proximo == $atual) {
-                $grauAtual = 1.0;
-                foreach ($baseRegras[$i] as $value) {
-                    $grauAtual *= $value['valor'];
+            $regraJ = $baseRegrasTotal[$i + 1];
+            $rotuloRegraJ = '';
+            for ($k = 0; $k < 12; $k++) {
+                foreach ($regraJ[$k] as $rotulo => $chave) {
+                    $rotuloRegraJ .=$rotulo;
                 }
-                $grauProximo = 1.0;
-                foreach ($baseRegras[$i + 1] as $value) {
-                    $grauProximo *= $value['valor'];
-                }
-
-                if ($grauAtual > $grauProximo) {
-                    $aux = null;
-                    $aux = $baseRegras[$i];
-                    $baseRegras[$i] = null;
-
-                    $baseRegras[$i] = $baseRegras[$i + 1];
-                    $baseRegras[$i + 1] = null;
-                    $baseRegras[$i + 1] = $aux;
-                    unset($baseRegras[$i]);
+            }
+            if ($rotuloRegraI == $rotuloRegraJ) {
+                if ($baseRegrasTotal[$i]['grau'] > $baseRegrasTotal[$i + 1]['grau']) {
+                    unset($baseRegrasTotal[$i + 1]);
                 } else {
-                    unset($baseRegras[$i]);
+                    unset($baseRegrasTotal[$i]);
                 }
             }
         }
-        return $baseRegras;
+        return $baseRegrasTotal;
     }
 
-    public function ordenarRegras($baseRegras)
+    public function ordenarRegras($baseRegrasTotal)
     {
-        $nBaseRegras = count($baseRegras);
-        #bubble sort para Ordenar
-        for ($i = 0; $i < $nBaseRegras; $i++) {
-            for ($j = 0; $j < $nBaseRegras - 1; $j++) {
-                $atual = '';
-                $proximo = '';
+        $nRegras = count($baseRegrasTotal);
+        for ($i = 0; $i < $nRegras; $i++) {
+            for ($j = 0; $j < $nRegras - 1; $j++) {
+                $rotuloRegraI = '';
+                $regraI = $baseRegrasTotal[$i];
                 for ($k = 0; $k < 12; $k++) {
-                    $proximo .= $baseRegras[$j + 1][$k]['chave'][1];
-                    $atual .= $baseRegras[$j][$k]['chave'][1];
+                    foreach ($regraI[$k] as $rotulo => $chave) {
+                        $rotuloRegraI .=$rotulo;
+                    }
                 }
-                if ($proximo < $atual) {
-                    $aux = NULL;
-                    $aux = $baseRegras[$j + 1];
-                    $baseRegras[$j + 1] = $baseRegras[$j];
-                    $baseRegras[$j] = NULL;
-                    $baseRegras[$j] = $aux;
+                $regraJ = $baseRegrasTotal[$j];
+                $rotuloRegraJ = '';
+                for ($k = 0; $k < 12; $k++) {
+                    foreach ($regraJ[$k] as $rotulo => $chave) {
+                        $rotuloRegraJ .=$rotulo;
+                    }
+                }
+                if ($rotuloRegraI < $rotuloRegraJ) {
+                    $aux = $baseRegrasTotal[$i];
+                    $baseRegrasTotal[$i] = NULL;
+                    $baseRegrasTotal[$i] = $baseRegrasTotal[$j];
+                    $baseRegrasTotal[$j] = NULL;
+                    $baseRegrasTotal[$j] = $aux;
                 }
             }
         }
-        return $baseRegras;
+        return $baseRegrasTotal;
     }
 
     public function getChaveValorRegra($regra)
     {
-        $maiorValorMes = array();
-        $Consequente13 = array();
-        foreach ($regra as $key => $mes) {
-            if ($key != 'grau') {
-                $valorMax = max($mes);
-                $chaveMax = '';
-                foreach ($mes as $key2 => $value) {
-                    if ($valorMax == $value) {
-                        $chaveMax = $key2;
-                        break;
-                    }
-                }
-                if ($key === 'Consequente13') {
-                    $Consequente13 = array('chave' => $chaveMax, 'valor' => $valorMax);
-                } else {
-                    $maiorValorMes[] = array('chave' => $chaveMax, 'valor' => $valorMax);
+        $saida = array();
+        $grauRegra = $regra['grau'];
+        unset($regra['grau']);
+        foreach ($regra as $mes => $rotulos) {
+            $rotuloMaximo = '';
+            $grauMaximo = 0;
+            foreach ($rotulos as $rotulo => $grau) {
+                if ($grau > $grauMaximo) {
+                    $grauMaximo = $grau;
+                    $rotuloMaximo = $rotulo;
                 }
             }
+            $temp = array();
+            $temp[$rotuloMaximo] = $grauMaximo;
+            $saida[] = $temp;
         }
-        if (!empty($Consequente13)) {
-            $maiorValorMes[] = $Consequente13;
-        }
-        return $maiorValorMes;
+        $saida['grau'] = $grauRegra;
+        return $saida;
     }
 
     public function calculaGrauRegra($regra)
@@ -470,40 +482,40 @@ class PrevisaoVendasFuzzy {
     {
         switch ($mes) {
             case 1:
-                return 'Janeiro';
+                return 'Jan';
                 break;
             case 2:
-                return 'Fevereiro';
+                return 'Fev';
                 break;
             case 3:
-                return 'Março';
+                return 'Mar';
                 break;
             case 4:
-                return 'Abril';
+                return 'Abr';
                 break;
             case 5:
-                return 'Maio';
+                return 'Mai';
                 break;
             case 6:
-                return 'Junho';
+                return 'Jun';
                 break;
             case 7:
-                return 'Julho';
+                return 'Jul';
                 break;
             case 8:
-                return 'Agosto';
+                return 'Ago';
                 break;
             case 9:
-                return 'Setembro';
+                return 'Set';
                 break;
             case 10:
-                return 'Outubro';
+                return 'Out';
                 break;
             case 11:
-                return 'Novembro';
+                return 'Nov';
                 break;
             case 12:
-                return 'Dezembro';
+                return 'Dez';
                 break;
             case 13:
                 return 'Consequente';
@@ -514,4 +526,19 @@ class PrevisaoVendasFuzzy {
         }
     }
 
+}
+
+function getArrayEntradas()
+{
+    return array(
+        /* 2004 */-27.75, 1.47, 4.29, 6.51, -4.22, -2.79, 7.76, -1.24, -1.45, 7.99, -3.24, 36.31,
+        /* 2005 */-25.97, -4.22, 16.09, -8.23, -0.35, -3.85, 6.63, -3.3, -2.1, 7.13, -3.01, 35.6,
+        /* 2006 */-25.38, -3.99, 6.14, 5.23, -8.54, -2.07, 4.78, -1.12, 1.12, 2.32, 1.18, 31.79,
+        /* 2007 */-23.29, -2.41, 10.79, -0.77, -4.51, -0.9, 1.56, 2.37, 0.47, 1.63, 1.88, 33.56,
+        /* 2008 */-22.84, -2.35, 16.76, -12.13, 8.66, -5.65, 4.4, 3.57, -5.45, 7.22, 1.19, 27.86,
+        /* 2009 */-22.59, -4.12, 6.68, 7.2, -3.67, -5.25, 5.92, 0.95, -3.77, 8.33, -2.24, 31.68,
+        /* 2010 */-20.96, -5.54, 10.74, -3.28, 0.46, -4.59, 4.21, -1.37, -0.11, 7.82, -4.43, 34.71,
+        //posicao = 84
+        /* 2011 */-20.49, -6.35, 10.14, 8.00, -10.92, -2.49, 6.41, -1.84, -0.22, 5.16, -1.84, 30.66,
+        /* 2012 */-18.91, 0.27, 7.54, -1.37, -2.37, -5.39, -0.08, 2.12, 0.79, 2.80, 2.13, 29.73);
 }
