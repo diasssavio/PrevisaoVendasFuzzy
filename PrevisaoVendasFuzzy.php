@@ -15,7 +15,7 @@ error_reporting(E_ALL ^ E_NOTICE);
 if ($_SERVER['REQUEST_METHOD'] == "POST") {
     $posMes = $_POST['posMes'];
     $margem = $_POST['margem'];
-    $nConjuntos = isset($_POST['nConjuntos']) ? $_POST['nConjuntos'] : 5;
+    $nConjuntos = $_POST['nConjuntos'];
     $todasEntradas = getArrayEntradas();
     $entradasTreino = array_slice($todasEntradas, 0, 84 + $posMes);
 
@@ -41,11 +41,11 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
             break;
         case 'buscarResultado':
             $entrada = array_slice($todasEntradas, 84 + $posMes - 12, 12);
-            $saidaEsperada = $todasEntradas[84 + $posMes];
+            $saidaReal = $todasEntradas[84 + $posMes];
             $todasRegrasPossiveis = $fuzzy->gerarProdutoCartesiano($fuzzy->eliminarValoresZerados($fuzzy->fuzzificar($entrada), TRUE));
             $regrasAtivadas = $fuzzy->ativarRegras($todasRegrasPossiveis);
-            $saidaReal = $fuzzy->aplicarOperadorFuzzy($regrasAtivadas);
-            echo json_encode(array('success' => TRUE, 'saidaReal' => $saidaReal, 'saidaEsperada' => $saidaEsperada));
+            $saidaPrevista = $fuzzy->aplicarOperadorFuzzy($regrasAtivadas);
+            echo json_encode(array('success' => TRUE, 'saidaPrevista' => $saidaPrevista, 'saidaReal' => $saidaReal));
             break;
     }
 }
@@ -72,6 +72,16 @@ class PrevisaoVendasFuzzy {
         $this->baseRegras = array();
         $this->regrasPasso3 = array();
         $this->defineIntervalosTRI();
+    }
+
+    public function getApiceTrianguloPorRotulo($rotulo)
+    {
+        foreach ($this->intervalosDefinidos as $chave => $intervalo) {
+            if ($rotulo == ('a' . $chave)) {
+                return $intervalo;
+            }
+        }
+        return NULL;
     }
 
     public function getBaseRegrasFormatada()
@@ -132,24 +142,27 @@ class PrevisaoVendasFuzzy {
 
     public function aplicarOperadorFuzzy($regrasAtivadas)
     {
-        $valores = array();
-        foreach ($regrasAtivadas as $regra) {
-            $minimo = array();
-            $minimo['valor'] = 1;
-            $minimo['chave'] = 1;
-            foreach ($regra as $value) {
-                foreach ($value as $key2 => $value2) {
-                    if ($value2 < $minimo['valor']) {
-                        $minimo['chave'] = $this->getSinonimoRotulo($key2);
-                        $minimo['valor'] = $value2;
+        //ENCONTRAR MÍNIMO
+        $divisor = 0;
+        $dividendo = 0;
+        foreach ($regrasAtivadas as $regras) {
+            $minimo = 1.0;
+            for ($i = 0; $i < 12; $i++) {
+                foreach ($regras[$i] as $rotulo => $valor) {
+                    if ($valor < $minimo) {
+                        $minimo = $valor;
                     }
                 }
             }
-            $x = $this->limSuperior - $this->limInferior;
-            $minimo['valor'] = ($x * $minimo['valor']) - $this->limSuperior;
-            $valores[] = $minimo;
+            $rotuloConsequente = '';
+            foreach ($regras[12] as $rotulo => $valor) {
+                $rotuloConsequente = $rotulo;
+            }
+            $apiceRotulo = $this->getApiceTrianguloPorRotulo($rotuloConsequente);
+            $dividendo += ($minimo * $apiceRotulo);
+            $divisor += $minimo;
         }
-        return $valores;
+        return $dividendo / $divisor;
     }
 
     public function ativarRegras($RegrasProdutoCartesiano)
