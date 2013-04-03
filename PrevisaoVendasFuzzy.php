@@ -66,9 +66,10 @@ class PrevisaoVendasFuzzy {
         $this->limSuperior = $limSuperior;
         $this->rotulos = $rotulos;
         $this->nRotulos = count($rotulos);
-        $this->intervalosDefinidos = 0;
+        $this->intervalosDefinidos = array();
         $this->baseRegras = array();
         $this->regrasPasso3 = array();
+
         $this->defineIntervalosTRI();
     }
 
@@ -469,16 +470,10 @@ class PrevisaoVendasFuzzy {
     //PASSO 1
     public function defineIntervalosTRI()
     {
-        $this->intervalosDefinidos = array();
-        $contadorDeConjuntos = 0;
-        $difLimites = $this->limSuperior - $this->limInferior;
-        $this->tamanhoIntervalo = $difLimites;
-        while (floor($this->nRotulos / 2) != $contadorDeConjuntos) {
-            $difLimites = $difLimites / 2;
-            $contadorDeConjuntos++;
-        }
+        $this->tamanhoIntervalo = $this->limSuperior - $this->limInferior;
+        $intervalo = ($this->tamanhoIntervalo / ($this->nRotulos - 1));
         for ($i = 0; $i < $this->nRotulos; $i++) {
-            $this->intervalosDefinidos[] = (float)( $this->limInferior + $difLimites * $i);
+            $this->intervalosDefinidos[] = ((float)($this->limInferior + ($intervalo * $i)));
         }
     }
 

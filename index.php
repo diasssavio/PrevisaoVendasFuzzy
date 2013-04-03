@@ -81,16 +81,16 @@ and open the template in the editor.
                                             <textarea id="element_1" name="element_1" style='margin-left: -30px;width: 635px;height: 200px'  readonly="true" class="element textarea medium"></textarea>
                                         </div>
                                     </li>
+                                    <li id="li_4" >
+                                        <label class="description" for="element_4">Saída Real </label>
+                                        <div>
+                                            <input id="element_4" name="element_4" readonly="true" id='saidaReal' class="element text medium" type="text" maxlength="255" value=""/>
+                                        </div>
+                                    </li>
                                     <li id="li_3" >
                                         <label class="description" for="element_3">Saída Prevista </label>
                                         <div>
                                             <input id="element_3" name="element_3" readonly="true" id='saidaPrevista' class="element text medium" type="text" maxlength="255" value=""/>
-                                        </div>
-                                    </li>
-                                    <li id="li_4" >
-                                        <label class="description" for="element_4">Saída Esperada </label>
-                                        <div>
-                                            <input id="element_4" name="element_4" readonly="true" id='saidaReal' class="element text medium" type="text" maxlength="255" value=""/>
                                         </div>
                                     </li>
                                     <li id="li_5" >
@@ -137,12 +137,12 @@ and open the template in the editor.
                                                     success:function(resultado){
                                                         var dados = JSON.parse(resultado);
                                                         if(dados.success){
-                                                            alert('Saída Prevista: '+dados.saidaPrevista+
-                                                                '\nSaída Real: '+dados.saidaReal+
-                                                                '\nErro: '+(dados.saidaReal - dados.saidaPrevista));
+                                                            alert('Saída Real: '+dados.saidaReal+
+                                                                '\nSaída Prevista: '+dados.saidaPrevista+
+                                                                '\nErro: '+Math.abs(dados.saidaReal - dados.saidaPrevista));
                                                             $('input[id=element_3]').val(dados.saidaPrevista);
                                                             $('input[id=element_4]').val(dados.saidaReal);
-                                                            $('input[id=element_5]').val(dados.saidaReal - dados.saidaPrevista);
+                                                            $('input[id=element_5]').val(Math.abs(dados.saidaReal - dados.saidaPrevista));
 
                                                         }else
                                                         {
