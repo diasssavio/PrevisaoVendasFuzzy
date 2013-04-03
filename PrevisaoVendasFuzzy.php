@@ -1,10 +1,5 @@
 <?php
 
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
-
 /**
  * Description of PrevisaoVendasFuzzy
  *
@@ -19,9 +14,12 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
     $todasEntradas = getArrayEntradas();
     $entradasTreino = array_slice($todasEntradas, 0, 84 + $posMes);
 
-    //DESCOBRIR ESTES VALORES
-    $minimo = -34.16;//ALGUM CÁLCULO
-    $maximo = 42.72;//ALGUM CALCULO
+    $intervalo = max($entradasTreino) - min($entradasTreino);
+
+    $adicional = ($intervalo * $margem) / 100;
+
+    $minimo = min($entradasTreino) - $adicional;
+    $maximo = max($entradasTreino) + $adicional;
 
     for ($i = 0; $i < $nConjuntos; $i++) {
         $rotulos[] = (string)'a' . $i;
@@ -35,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
             $regras = $fuzzy->getBaseRegrasFormatada();
             foreach ($regras as $regra) {
                 echo $regra;
-                ?>                              <?php
+?>       <?php
 
             }
             break;
@@ -44,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
             $saidaReal = $todasEntradas[84 + $posMes];
             $todasRegrasPossiveis = $fuzzy->gerarProdutoCartesiano($fuzzy->eliminarValoresZerados($fuzzy->fuzzificar($entrada), TRUE));
             $regrasAtivadas = $fuzzy->ativarRegras($todasRegrasPossiveis);
-            $saidaPrevista = $fuzzy->aplicarOperadorFuzzy($regrasAtivadas);
+            $saidaPrevista = $fuzzy->aplicarOperadorFuzzy($regrasAtivadas, $entrada);
             echo json_encode(array('success' => TRUE, 'saidaPrevista' => $saidaPrevista, 'saidaReal' => $saidaReal));
             break;
     }
@@ -101,18 +99,6 @@ class PrevisaoVendasFuzzy {
         return $saida;
     }
 
-    public function getSinonimoRotulo($rotulo)
-    {
-        $sinonimos = array(
-            'a0' => 'Muito Baixo',
-            'a1' => 'Baixo',
-            'a2' => 'Médio',
-            'a3' => 'Alto',
-            'a4' => 'Muito Alto'
-        );
-        return $sinonimos[$rotulo];
-    }
-
     public function fuzzificar($entradas, $posEntrada = 0)
     {
         $posJanelaMeses = 0;
@@ -126,8 +112,8 @@ class PrevisaoVendasFuzzy {
             //GERA O VALOR PARA CADA RÓTULO DE PERTINÊNCIA
             for ($j = 0; $j < $this->nRotulos; $j++) {
                 $f = $this->intervalosDefinidos[$j];
-                $e = ($j - 1) < 0 ? $this->limInferior - 1 : $this->intervalosDefinidos[$j - 1];
-                $g = ($j + 1) > $this->nRotulos ? $this->limSuperior + 1 : $this->intervalosDefinidos[$j + 1];
+                $e = ($j - 1) < 0 ? $this->limInferior - $this->tamanhoIntervalo : $this->intervalosDefinidos[$j - 1];
+                $g = ($j + 1) > $this->nRotulos ? $this->limSuperior + $this->tamanhoIntervalo : $this->intervalosDefinidos[$j + 1];
                 $temp[$this->rotulos[$j]] = $this->TRI($x, $e, $f, $g);
             }
             $nI = $this->getIndexMes($i, $tamJanela);
@@ -140,11 +126,36 @@ class PrevisaoVendasFuzzy {
         return $novaRegra;
     }
 
-    public function aplicarOperadorFuzzy($regrasAtivadas)
+    public function aplicarOperadorFuzzy($regrasAtivadas, $entradas)
     {
+        $entradaFuzzificada = $this->eliminarValoresZerados($this->fuzzificar($entradas), TRUE);
+        $antecedentes = array();
+        $consequentes = array();
+        foreach ($regrasAtivadas as $nRegra => $regra) {
+            foreach ($regra as $pos => $arr_rotulo) {
+                if ($pos < 12) {
+                    foreach ($arr_rotulo as $rotulo => $valor) {
+                        $antecedentes[$nRegra][] = $entradaFuzzificada[$pos][$rotulo];
+                    }
+                }
+                if ($pos == 12) {
+                    foreach ($arr_rotulo as $rotulo => $valor) {
+                        $consequentes[$nRegra] = $rotulo;
+                    }
+                }
+            }
+        }
         //ENCONTRAR MÍNIMO
         $divisor = 0;
         $dividendo = 0;
+
+        foreach ($antecedentes as $pos => $regra) {
+            $minimo = min($regra);
+            $apiceRotulo = $this->getApiceTrianguloPorRotulo($consequentes[$pos]);
+            $dividendo += ($minimo * $apiceRotulo);
+            $divisor += $minimo;
+        }
+        return $dividendo / $divisor;
         foreach ($regrasAtivadas as $regras) {
             $minimo = 1.0;
             for ($i = 0; $i < 12; $i++) {
@@ -159,9 +170,11 @@ class PrevisaoVendasFuzzy {
                 $rotuloConsequente = $rotulo;
             }
             $apiceRotulo = $this->getApiceTrianguloPorRotulo($rotuloConsequente);
+
             $dividendo += ($minimo * $apiceRotulo);
             $divisor += $minimo;
         }
+
         return $dividendo / $divisor;
     }
 
@@ -459,6 +472,7 @@ class PrevisaoVendasFuzzy {
         $this->intervalosDefinidos = array();
         $contadorDeConjuntos = 0;
         $difLimites = $this->limSuperior - $this->limInferior;
+        $this->tamanhoIntervalo = $difLimites;
         while (floor($this->nRotulos / 2) != $contadorDeConjuntos) {
             $difLimites = $difLimites / 2;
             $contadorDeConjuntos++;
@@ -473,10 +487,10 @@ class PrevisaoVendasFuzzy {
         if ($x <= $e) {
             return 0;
         }
-        if ($x <= $f) {
+        if ($e < $x && $x <= $f) {
             return (1 - ($f - $x) / ($f - $e));
         }
-        if ($x <= $g) {
+        if ($f < $x && $x <= $g) {
             return (($g - $x) / ($g - $f));
         }
         return 0;
